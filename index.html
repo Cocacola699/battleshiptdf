@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Strike – Online Battleship</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#0d1620;--panel:#132030;--head:#2c3e50;--water:#09121b;--line:#243447;--txt:#e8f0f7;--mut:#8aa0b5;--acc:#14b8a6;--acc2:#2dd4bf;--red:#ef4444;--fire:#ff8a1f}
+*{box-sizing:border-box;margin:0}
+html,body{min-height:100%}
+body{background:radial-gradient(1200px 600px at 50% -10%,#16283a,var(--bg));color:var(--txt);font-family:Rubik,system-ui,sans-serif;padding:18px 12px 40px}
+[hidden]{display:none!important}
+header{text-align:center;margin-bottom:18px}
+h1{font-weight:800;font-size:clamp(28px,5vw,44px);letter-spacing:-.02em}
+h1 span{color:var(--acc2)}
+.sub{color:var(--mut);font-size:14px;margin-top:2px}
+.wrap{max-width:980px;margin:auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+.lobby{max-width:560px;margin:auto;display:grid;gap:14px}
+label{font-size:13px;color:var(--mut);display:block;margin-bottom:6px}
+input{width:100%;background:var(--water);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:12px 14px;font:inherit;font-size:16px;outline:none}
+input:focus{border-color:var(--acc)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.two{grid-template-columns:1fr}}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 18px;cursor:pointer;background:var(--acc);color:#04211e;transition:transform .12s,filter .12s}
+button:hover{filter:brightness(1.1)}button:active{transform:scale(.97)}
+button.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc2);outline-offset:2px}
+.code{font-size:40px;font-weight:800;letter-spacing:.18em;color:var(--acc2);text-align:center;margin:8px 0;cursor:pointer}
+.note{color:var(--mut);font-size:14px;text-align:center}
+.stack{display:grid;gap:12px;align-content:start}
+/* boards */
+.boards{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
+.panel{width:min(92vw,440px)}
+.ph{background:#1d2b3b;color:var(--mut);text-align:center;padding:16px 10px;font-size:20px;border-radius:12px 12px 0 0;transition:.25s;display:flex;justify-content:center;gap:10px;align-items:baseline;flex-wrap:wrap}
+.ph small{font-size:13px;opacity:.85}
+.panel.active .ph{background:var(--head);color:#fff;box-shadow:0 2px 0 var(--acc2)}
+.board{display:grid;grid-template-columns:repeat(10,1fr);aspect-ratio:1;background:var(--water);border-radius:0 0 12px 12px;overflow:hidden;user-select:none;touch-action:manipulation}
+.cell{position:relative;display:flex;align-items:center;justify-content:center;font-size:clamp(12px,3.6vw,20px)}
+.cell::after{content:"";width:5px;height:5px;border-radius:50%;background:#1a4a4c}
+.cell.miss::after{width:8px;height:8px;background:var(--acc2);box-shadow:0 0 8px var(--acc)}
+.cell .b{position:absolute;inset:2px;border-radius:26%;background:var(--c);display:flex;align-items:center;justify-content:center}
+.cell.has::after,.cell.pv::after{display:none}
+.cell .b.foe{background:#7f2a2a}
+.cell .b.dead{filter:saturate(.85)}
+.cell .b i{font-style:normal;position:relative;z-index:1;filter:drop-shadow(0 0 4px rgba(0,0,0,.4))}
+.cell .b.dead i{opacity:.65;filter:grayscale(1) brightness(2.2)}
+.cell .b.pvok{background:var(--c);opacity:.6}
+.cell .b.pvbad{background:#ef4444;opacity:.45}
+#eBoard .cell:not(.shot){cursor:crosshair}
+#eBoard.mine .cell:not(.shot):hover{background:rgba(45,212,191,.16)}
+#eBoard.wait{opacity:.85}
+.bar{text-align:center;margin:0 auto 18px;max-width:560px;padding:12px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-weight:500}
+.bar.go{border-color:var(--acc2);box-shadow:0 0 22px rgba(45,212,191,.2)}
+.bar small{display:block;color:var(--mut);font-weight:400;margin-top:2px}
+.tray{display:flex;flex-direction:column;gap:8px}
+.ship{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--water);cursor:pointer;color:var(--txt);font-weight:500;justify-content:flex-start;text-align:left}
+.ship.sel{border-color:var(--acc2);box-shadow:0 0 0 1px var(--acc2)}
+.ship.done{opacity:.5}
+.ship .row{display:flex;gap:3px}.ship .row s{width:18px;height:18px;border-radius:6px;background:var(--c)}
+.place{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;align-items:flex-start}
+.side{width:min(92vw,300px)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btns button{flex:1}
+.modal{position:fixed;inset:0;background:rgba(5,10,16,.8);display:flex;align-items:center;justify-content:center;z-index:9;padding:16px}
+.modal .card{max-width:400px;text-align:center;display:grid;gap:14px}
+.modal h2{font-size:34px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2b3b;border:1px solid var(--acc);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20;opacity:0;pointer-events:none;transition:opacity .25s}
+#toast.on{opacity:1}
+@media(prefers-reduced-motion:no-preference){.cell .b i.f{animation:pop .35s}@keyframes pop{from{transform:scale(2.4);opacity:0}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>Deep <span>Strike</span></h1><div class="sub">Online Battleship for two players</div></header>
+
+<!-- LOBBY -->
+<section id="s-lobby" class="lobby">
+  <div class="card"><label for="name">Your captain name</label><input id="name" maxlength="16" placeholder="e.g. Captain Nemo" autocomplete="off"></div>
+  <div class="two">
+    <div class="card stack"><b>Host a game</b><span class="note" style="text-align:left">Get a room code and share it with a friend.</span><button id="btnHost">Create room</button></div>
+    <div class="card stack"><b>Join a game</b><input id="joinCode" maxlength="5" placeholder="Room code" style="text-transform:uppercase;letter-spacing:.2em;text-align:center"><button id="btnJoin" class="ghost">Join room</button></div>
+  </div>
+</section>
+
+<!-- WAITING -->
+<section id="s-wait" class="lobby" hidden>
+  <div class="card stack"><div class="note">Share this code with your opponent</div><div class="code" id="roomCode" title="Click to copy">-----</div><div class="note" id="waitMsg">Waiting for opponent to join…</div><button class="ghost" onclick="location.reload()">Cancel</button></div>
+</section>
+
+<!-- PLACEMENT -->
+<section id="s-place" hidden>
+  <div class="bar" id="placeBar">Place your fleet<small>Click a ship, then click the grid. Press R to rotate.</small></div>
+  <div class="place">
+    <div class="panel"><div class="ph" style="background:var(--head);color:#fff" id="pName">Your boats</div><div class="board" id="pBoard"></div></div>
+    <div class="side card">
+      <div class="tray" id="tray"></div>
+      <div class="btns"><button class="ghost" id="btnRot">Rotate</button><button class="ghost" id="btnRand">Random</button><button class="ghost" id="btnClear">Clear</button></div>
+      <div class="btns"><button id="btnReady" disabled>Ready for battle</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- BATTLE -->
+<section id="s-battle" hidden>
+  <div class="bar" id="bar"></div>
+  <div class="boards">
+    <div class="panel" id="pnlMine"><div class="ph"><span id="mName">Your boats</span><small id="mLeft"></small></div><div class="board" id="mBoard"></div></div>
+    <div class="panel" id="pnlFoe"><div class="ph"><span id="fName">Enemy boats</span><small id="fLeft"></small></div><div class="board" id="eBoard"></div></div>
+  </div>
+</section>
+</div>
+
+<div class="modal" id="modal" hidden><div class="card"><h2 id="mTitle"></h2><div class="note" id="mText"></div><button id="btnRematch">Play again</button><button class="ghost" onclick="location.reload()">Leave</button></div></div>
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), N=10;
+const FLEET=[{n:'Carrier',z:5,c:'#ef4444'},{n:'Battleship',z:4,c:'#9b27af'},{n:'Cruiser',z:3,c:'#3f51b5'},{n:'Submarine',z:3,c:'#0ea5e9'},{n:'Destroyer',z:2,c:'#0d9488'}];
+const S={name:'',foe:'',host:false,peer:null,conn:null,ships:[],sel:0,horiz:true,ready:false,foeReady:false,turn:false,over:false,rem:false,foeRem:false,my:[],en:[],hover:null,foeSunk:0,last:''};
+const grid=f=>Array.from({length:N},()=>Array.from({length:N},f));
+const go=p=>document.querySelectorAll('section').forEach(e=>e.hidden=e.id!=='s-'+p);
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600)}
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const send=d=>S.conn&&S.conn.open&&S.conn.send(d);
+
+/* ---------- networking ---------- */
+function getName(){const v=$('#name').value.trim();if(!v){toast('Enter your name first');$('#name').focus();return null}S.name=v;return v}
+function makeCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:5},()=>a[Math.random()*a.length|0]).join('')}
+$('#btnHost').onclick=()=>{if(!getName())return;S.host=true;go('wait');hostPeer()};
+function hostPeer(){
+  const code=makeCode();S.peer=new Peer('deepstrike-'+code);
+  S.peer.on('open',()=>{$('#roomCode').textContent=code});
+  S.peer.on('connection',c=>{if(S.conn){c.close();return}S.conn=c;wire(c)});
+  S.peer.on('error',e=>{if(e.type==='unavailable-id'){S.peer.destroy();hostPeer()}else toast('Connection error: '+e.type)});
+}
+$('#roomCode').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText($('#roomCode').textContent).then(()=>toast('Code copied'))};
+$('#btnJoin').onclick=()=>{
+  if(!getName())return;const code=$('#joinCode').value.trim().toUpperCase();if(code.length<5){toast('Enter the 5-character room code');return}
+  $('#btnJoin').disabled=true;S.peer=new Peer();
+  S.peer.on('open',()=>{S.conn=S.peer.connect('deepstrike-'+code,{reliable:true});wire(S.conn)});
+  S.peer.on('error',e=>{$('#btnJoin').disabled=false;toast(e.type==='peer-unavailable'?'Room not found. Check the code.':'Connection error: '+e.type)});
+};
+function wire(c){
+  c.on('open',()=>send({t:'hi',name:S.name}));
+  c.on('data',onData);
+  c.on('close',()=>{if(!S.over||true){showModal('Opponent left','The connection was closed.',false)}});
+}
+function onData(d){
+  switch(d.t){
+    case'hi':S.foe=String(d.name).slice(0,16);toast(S.foe+' joined');newGame();break;
+    case'ready':S.foeReady=true;tryStart();break;
+    case'start':S.turn=d.first===(S.host?'h':'g');beginBattle();break;
+    case'fire':onFire(d.r,d.c);break;
+    case'res':onRes(d);break;
+    case'rematch':S.foeRem=true;if(S.rem)newGame();else toast(S.foe+' wants a rematch');break;
+  }
+}
+
+/* ---------- placement ---------- */
+function newGame(){
+  S.ships=FLEET.map(f=>({...f,cells:[],hits:0,placed:false}));S.sel=0;S.horiz=true;S.ready=S.foeReady=S.over=S.rem=S.foeRem=false;S.foeSunk=0;
+  $('#modal').hidden=true;$('#btnReady').disabled=true;$('#btnReady').textContent='Ready for battle';
+  $('#pName').textContent=S.name+"'s boats";go('place');renderPlace();
+}
+const shipCells=(r,c,z,h)=>Array.from({length:z},(_,i)=>h?[r,c+i]:[r+i,c]);
+function fits(cells,ig){return cells.every(([r,c])=>r>=0&&c>=0&&r<N&&c<N&&!S.ships.some((s,i)=>i!==ig&&s.cells.some(([a,b])=>a===r&&b===c)))}
+function shipAt(r,c){return S.ships.findIndex(s=>s.cells.some(([a,b])=>a===r&&b===c))}
+function renderPlace(){
+  const b=$('#pBoard');b.innerHTML='';
+  const pv=S.hover&&S.sel>=0&&!S.ships[S.sel].placed?shipCells(S.hover[0],S.hover[1],S.ships[S.sel].z,S.horiz):[];
+  const ok=pv.length&&fits(pv,-1);
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const d=document.createElement('div');d.className='cell';const i=shipAt(r,c);
+    const inPv=pv.some(([a,q])=>a===r&&q===c);
+    if(i>=0){d.classList.add('has');d.innerHTML=`<div class="b" style="--c:${S.ships[i].c}"></div>`}
+    else if(inPv){d.classList.add('pv');d.innerHTML=`<div class="b ${ok?'pvok':'pvbad'}" style="--c:${S.ships[S.sel].c}"></div>`}
+    d.onmouseenter=()=>{S.hover=[r,c];renderPlace()};
+    d.onclick=()=>{S.hover=[r,c];clickCell(r,c)};
+    b.appendChild(d);
+  }
+  b.onmouseleave=()=>{S.hover=null;renderPlace()};
+  const t=$('#tray');t.innerHTML='';
+  S.ships.forEach((s,i)=>{const e=document.createElement('button');e.className='ship'+(i===S.sel?' sel':'')+(s.placed?' done':'');
+    e.style.setProperty('--c',s.c);e.innerHTML=`<span class="row">${'<s></s>'.repeat(s.z)}</span>${s.n}${s.placed?' ✓':''}`;
+    e.onclick=()=>{if(s.placed){s.placed=false;s.cells=[]}S.sel=i;renderPlace()};t.appendChild(e)});
+  $('#btnReady').disabled=S.ready||!S.ships.every(s=>s.placed);
+}
+function clickCell(r,c){
+  const hit=shipAt(r,c);
+  if(hit>=0){S.ships[hit].placed=false;S.ships[hit].cells=[];S.sel=hit;renderPlace();return}
+  if(S.sel<0||S.ships[S.sel].placed||S.ready)return;
+  const s=S.ships[S.sel],cells=shipCells(r,c,s.z,S.horiz);
+  if(!fits(cells,-1)){toast("Can't place there");return}
+  s.cells=cells;s.placed=true;S.sel=S.ships.findIndex(x=>!x.placed);renderPlace();
+}
+function rotate(){S.horiz=!S.horiz;renderPlace()}
+$('#btnRot').onclick=rotate;
+addEventListener('keydown',e=>{if(e.key.toLowerCase()==='r'&&!$('#s-place').hidden&&document.activeElement.tagName!=='INPUT')rotate()});
+$('#btnClear').onclick=()=>{if(S.ready)return;S.ships.forEach(s=>{s.placed=false;s.cells=[]});S.sel=0;renderPlace()};
+function randomize(){
+  if(S.ready)return;S.ships.forEach(s=>{s.placed=false;s.cells=[]});
+  for(const s of S.ships){let ok=false;while(!ok){const h=Math.random()<.5,r=Math.random()*N|0,c=Math.random()*N|0,cl=shipCells(r,c,s.z,h);if(fits(cl,-1)){s.cells=cl;s.placed=true;ok=true}}}
+  S.sel=-1;renderPlace();
+}
+$('#btnRand').onclick=randomize;
+$('#btnReady').onclick=()=>{S.ready=true;$('#btnReady').disabled=true;$('#btnReady').textContent='Waiting for opponent…';send({t:'ready'});tryStart()};
+function tryStart(){
+  if(S.host&&S.ready&&S.foeReady&&$('#s-place').hidden===false){
+    const f=Math.random()<.5?'h':'g';send({t:'start',first:f});S.turn=f==='h';beginBattle();
+  }
+}
+
+/* ---------- battle ---------- */
+function beginBattle(){
+  S.my=grid(()=>({s:-1,hit:false,miss:false}));S.ships.forEach((s,i)=>{s.hits=0;s.cells.forEach(([r,c])=>S.my[r][c].s=i)});
+  S.en=grid(()=>({hit:false,miss:false,col:null}));S.last='';
+  $('#mName').textContent=S.name+"'s boats";$('#fName').textContent=S.foe+"'s boats";
+  go('battle');renderBattle();
+}
+function renderBattle(){
+  const m=$('#mBoard'),e=$('#eBoard');m.innerHTML=e.innerHTML='';
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const x=S.my[r][c],d=document.createElement('div');d.className='cell';
+    if(x.s>=0){const sh=S.ships[x.s],dead=sh.hits===sh.z;d.classList.add('has');
+      d.innerHTML=`<div class="b ${dead?'dead':''}" style="--c:${sh.c}">${dead?'<i>💀</i>':x.hit?'<i>🔥</i>':''}</div>`}
+    else if(x.miss)d.classList.add('miss');
+    m.appendChild(d);
+    const y=S.en[r][c],q=document.createElement('div');q.className='cell';
+    if(y.hit||y.miss)q.classList.add('shot');
+    if(y.hit){q.classList.add('has');q.innerHTML=y.col?`<div class="b dead" style="--c:${y.col}"><i>💀</i></div>`:`<div class="b foe"><i class="f">🔥</i></div>`}
+    else if(y.miss)q.classList.add('miss');
+    q.onclick=()=>fire(r,c);
+    e.appendChild(q);
+  }
+  const alive=S.ships.filter(s=>s.hits<s.z).length;
+  $('#mLeft').textContent=alive+' afloat';$('#fLeft').textContent=(FLEET.length-S.foeSunk)+' afloat';
+  $('#pnlMine').classList.toggle('active',!S.turn);$('#pnlFoe').classList.toggle('active',S.turn);
+  e.classList.toggle('mine',S.turn&&!S.over);
+  const b=$('#bar');b.className='bar'+(S.turn&&!S.over?' go':'');
+  b.innerHTML=(S.turn?'Your turn. Pick a square on the enemy board.':esc(S.foe)+' is aiming…')+(S.last?`<small>${S.last}</small>`:'');
+}
+function fire(r,c){
+  if(!S.turn||S.over)return;const y=S.en[r][c];if(y.hit||y.miss)return;
+  S.turn=false;send({t:'fire',r,c});renderBattle();
+}
+function onFire(r,c){
+  const x=S.my[r][c];if(x.hit||x.miss)return;
+  const hit=x.s>=0,sh=hit?S.ships[x.s]:null;
+  if(hit){x.hit=true;sh.hits++}else x.miss=true;
+  const sunk=hit&&sh.hits===sh.z?{cells:sh.cells,c:sh.c,n:sh.n}:null;
+  const lost=S.ships.every(s=>s.hits===s.z);
+  send({t:'res',r,c,hit,sunk,lost});
+  S.last=sunk?`${esc(S.foe)} sank your ${sunk.n}!`:hit?`${esc(S.foe)} hit your ship!`:`${esc(S.foe)} missed.`;
+  if(lost){S.over=true;renderBattle();showModal('Defeat','All your ships are sunk. '+S.foe+' wins.',true)}
+  else{S.turn=true;renderBattle()}
+}
+function onRes(d){
+  const y=S.en[d.r][d.c];
+  if(d.hit)y.hit=true;else y.miss=true;
+  if(d.sunk){S.foeSunk++;d.sunk.cells.forEach(([r,c])=>S.en[r][c].col=d.sunk.c)}
+  S.last=d.sunk?`You sank their ${d.sunk.n}!`:d.hit?'Direct hit!':'Splash. Missed.';
+  S.turn=false;
+  if(d.lost){S.over=true;renderBattle();showModal('Victory!','You sank the entire enemy fleet.',true)}else renderBattle();
+}
+function showModal(t,m,rematch){
+  $('#mTitle').textContent=t;$('#mText').textContent=m;$('#btnRematch').hidden=!rematch;
+  $('#btnRematch').disabled=false;$('#btnRematch').textContent='Play again';$('#modal').hidden=false;
+}
+$('#btnRematch').onclick=()=>{S.rem=true;send({t:'rematch'});$('#btnRematch').disabled=true;$('#btnRematch').textContent='Waiting for '+S.foe+'…';if(S.foeRem)newGame()};
+$('#name').addEventListener('keydown',e=>{if(e.key==='Enter')$('#btnHost').click()});
+$('#joinCode').addEventListener('keydown',e=>{if(e.key==='Enter')$('#btnJoin').click()});
+S.ships=FLEET.map(f=>({...f,cells:[],hits:0,placed:false}));
+</script>
+</body>
+</html>
