@@ -68,6 +68,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--acc2);outline-o
 .modal{position:fixed;inset:0;background:rgba(5,10,16,.8);display:flex;align-items:center;justify-content:center;z-index:9;padding:16px}
 .modal .card{max-width:400px;text-align:center;display:grid;gap:14px}
 .modal h2{font-size:34px}
+.cell.scan{background:rgba(45,212,191,.09)}
+.cell .sn{position:absolute;top:1px;right:3px;font-size:11px;font-weight:800;color:var(--acc2);z-index:3}
+.cell.pvw{background:rgba(255,138,31,.28);outline:1px solid var(--fire);outline-offset:-1px}
+.wbar{display:flex;gap:8px;justify-content:center;padding:10px;background:#111d2b;border-radius:12px;margin-top:8px}
+.wp{position:relative;width:76px;padding:8px 4px 6px;background:#2a3949;color:var(--txt);border:2px solid transparent;display:flex;flex-direction:column;align-items:center;gap:2px}
+.wp span{font-size:26px;line-height:1.2}.wp em{font-style:normal;font-size:11px;font-weight:500}
+.wp b{position:absolute;top:3px;right:3px;background:var(--acc);color:#04211e;border-radius:8px;font-size:11px;padding:0 6px}
+.wp.on{border-color:var(--fire);background:#3a3f48}.wp:disabled{opacity:.35}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2b3b;border:1px solid var(--acc);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20;opacity:0;pointer-events:none;transition:opacity .25s}
 #toast.on{opacity:1}
 @media(prefers-reduced-motion:no-preference){.cell .b i.f{animation:pop .35s}@keyframes pop{from{transform:scale(2.4);opacity:0}}}
@@ -88,7 +96,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--acc2);outline-o
 
 <!-- WAITING -->
 <section id="s-wait" class="lobby" hidden>
-  <div class="card stack"><div class="note">Share this code with your opponent</div><div class="code" id="roomCode" title="Click to copy">-----</div><div class="note" id="waitMsg">Waiting for opponent to join…</div><button class="ghost" onclick="location.reload()">Cancel</button></div>
+  <div class="card stack"><div class="note">Share this code with your opponent</div><div class="code" id="roomCode" title="Click to copy">-----</div><div class="note" id="waitMsg">Waiting for opponent to join…</div><button class="ghost" id="btnLink">Copy invite link</button><button class="ghost" onclick="location.reload()">Cancel</button></div>
 </section>
 
 <!-- PLACEMENT -->
@@ -109,7 +117,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--acc2);outline-o
   <div class="bar" id="bar"></div>
   <div class="boards">
     <div class="panel" id="pnlMine"><div class="ph"><span id="mName">Your boats</span><small id="mLeft"></small></div><div class="board" id="mBoard"></div></div>
-    <div class="panel" id="pnlFoe"><div class="ph"><span id="fName">Enemy boats</span><small id="fLeft"></small></div><div class="board" id="eBoard"></div></div>
+    <div class="panel" id="pnlFoe"><div class="ph"><span id="fName">Enemy boats</span><small id="fLeft"></small></div><div class="board" id="eBoard"></div><div class="wbar" id="wbar"></div></div>
   </div>
 </section>
 </div>
@@ -128,33 +136,53 @@ const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 const send=d=>S.conn&&S.conn.open&&S.conn.send(d);
 
 /* ---------- networking ---------- */
+const PREFIX='deepstrike-';
+const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]};
+const mkPeer=id=>new Peer(id,{debug:1,config:ICE});
 function getName(){const v=$('#name').value.trim();if(!v){toast('Enter your name first');$('#name').focus();return null}S.name=v;return v}
 function makeCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:5},()=>a[Math.random()*a.length|0]).join('')}
-$('#btnHost').onclick=()=>{if(!getName())return;S.host=true;go('wait');hostPeer()};
+const noPeer=()=>typeof Peer==='undefined'&&(toast('PeerJS failed to load. Check your internet or disable ad blockers.'),true);
+$('#btnHost').onclick=()=>{if(noPeer()||!getName())return;S.host=true;go('wait');hostPeer();
+  setTimeout(()=>{if($('#roomCode').textContent==='-----')$('#waitMsg').textContent="Can't reach the PeerJS server. Check your internet and reload."},12000)};
 function hostPeer(){
-  const code=makeCode();S.peer=new Peer('deepstrike-'+code);
-  S.peer.on('open',()=>{$('#roomCode').textContent=code});
-  S.peer.on('connection',c=>{if(S.conn){c.close();return}S.conn=c;wire(c)});
-  S.peer.on('error',e=>{if(e.type==='unavailable-id'){S.peer.destroy();hostPeer()}else toast('Connection error: '+e.type)});
+  const code=makeCode();S.peer=mkPeer(PREFIX+code);
+  S.peer.on('open',()=>{$('#roomCode').textContent=code;$('#waitMsg').textContent='Waiting for opponent to join…'});
+  S.peer.on('connection',c=>{if(S.conn&&S.conn.open){c.close();return}S.conn=c;$('#waitMsg').textContent='Opponent connecting…';wire(c)});
+  S.peer.on('disconnected',()=>{try{S.peer.reconnect()}catch(e){}});
+  S.peer.on('error',e=>{if(e.type==='unavailable-id'){S.peer.destroy();hostPeer()}else $('#waitMsg').textContent='Connection problem ('+e.type+'). Reload and try again.'});
 }
 $('#roomCode').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText($('#roomCode').textContent).then(()=>toast('Code copied'))};
+$('#btnLink').onclick=()=>{const u=location.href.split('?')[0]+'?room='+$('#roomCode').textContent;
+  if(!/^http/.test(location.protocol)){toast('Link works only when the page is hosted online. Share the code instead.');return}
+  navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Invite link copied'))};
+const q=new URLSearchParams(location.search).get('room');if(q)$('#joinCode').value=q.toUpperCase().slice(0,5);
 $('#btnJoin').onclick=()=>{
-  if(!getName())return;const code=$('#joinCode').value.trim().toUpperCase();if(code.length<5){toast('Enter the 5-character room code');return}
-  $('#btnJoin').disabled=true;S.peer=new Peer();
-  S.peer.on('open',()=>{S.conn=S.peer.connect('deepstrike-'+code,{reliable:true});wire(S.conn)});
-  S.peer.on('error',e=>{$('#btnJoin').disabled=false;toast(e.type==='peer-unavailable'?'Room not found. Check the code.':'Connection error: '+e.type)});
+  if(noPeer()||!getName())return;const code=$('#joinCode').value.trim().toUpperCase();
+  if(code.length<5){toast('Enter the 5-character room code');return}
+  const btn=$('#btnJoin');btn.disabled=true;btn.textContent='Connecting…';
+  const fail=m=>{btn.disabled=false;btn.textContent='Join room';toast(m)};
+  S.peer=mkPeer();
+  const to=setTimeout(()=>{fail("Couldn't connect. Check the code and that the host is still waiting.");try{S.peer.destroy()}catch(e){}},20000);
+  S.peer.on('open',()=>{S.conn=S.peer.connect(PREFIX+code,{reliable:true});S.conn.on('open',()=>clearTimeout(to));wire(S.conn)});
+  S.peer.on('error',e=>{clearTimeout(to);fail(e.type==='peer-unavailable'?'Room not found. Check the code.':'Connection error: '+e.type)});
 };
 function wire(c){
-  c.on('open',()=>send({t:'hi',name:S.name}));
+  let said=false;const hi=()=>{if(said)return;said=true;send({t:'hi',name:S.name})};
+  c.on('open',hi);if(c.open)hi();
   c.on('data',onData);
-  c.on('close',()=>{if(!S.over||true){showModal('Opponent left','The connection was closed.',false)}});
+  c.on('close',()=>{if(S.conn===c)showModal('Opponent left','The connection was closed.',false)});
+  c.on('error',e=>toast('Link error: '+e.type));
 }
 function onData(d){
+  if(!d||!d.t)return;
   switch(d.t){
-    case'hi':S.foe=String(d.name).slice(0,16);toast(S.foe+' joined');newGame();break;
+    case'hi':if(S.linked)break;S.linked=true;S.foe=String(d.name).slice(0,16);toast(S.foe+' joined');newGame();break;
     case'ready':S.foeReady=true;tryStart();break;
     case'start':S.turn=d.first===(S.host?'h':'g');beginBattle();break;
-    case'fire':onFire(d.r,d.c);break;
+    case'fire':if(Array.isArray(d.cells))onFire(d.cells);break;
+    case'radar':onRadar(d);break;
+    case'rad':onRad(d);break;
     case'res':onRes(d);break;
     case'rematch':S.foeRem=true;if(S.rem)newGame();else toast(S.foe+' wants a rematch');break;
   }
@@ -162,7 +190,7 @@ function onData(d){
 
 /* ---------- placement ---------- */
 function newGame(){
-  S.ships=FLEET.map(f=>({...f,cells:[],hits:0,placed:false}));S.sel=0;S.horiz=true;S.ready=S.foeReady=S.over=S.rem=S.foeRem=false;S.foeSunk=0;
+  S.ships=FLEET.map(f=>({...f,cells:[],hits:0,placed:false}));S.sel=0;S.horiz=true;S.ready=S.foeReady=S.over=S.rem=S.foeRem=false;S.foeSunk=0;S.uses={cross:2,blast:1,radar:2};S.wp="missile";S.scans=[];
   $('#modal').hidden=true;$('#btnReady').disabled=true;$('#btnReady').textContent='Ready for battle';
   $('#pName').textContent=S.name+"'s boats";go('place');renderPlace();
 }
@@ -215,11 +243,24 @@ function tryStart(){
 }
 
 /* ---------- battle ---------- */
+const B9=[];for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)B9.push([a,b]);
+const WPN={missile:{n:'Missile',i:'🚀',p:[[0,0]]},cross:{n:'Cross',i:'✚',p:[[0,0],[-1,0],[1,0],[0,-1],[0,1]]},blast:{n:'Blast',i:'💣',p:B9},radar:{n:'Radar',i:'📡',p:B9}};
+const inB=(r,c)=>r>=0&&c>=0&&r<N&&c<N;
 function beginBattle(){
   S.my=grid(()=>({s:-1,hit:false,miss:false}));S.ships.forEach((s,i)=>{s.hits=0;s.cells.forEach(([r,c])=>S.my[r][c].s=i)});
-  S.en=grid(()=>({hit:false,miss:false,col:null}));S.last='';
+  S.en=grid(()=>({hit:false,miss:false,col:null}));S.last='';S.scans=[];S.wp='missile';
   $('#mName').textContent=S.name+"'s boats";$('#fName').textContent=S.foe+"'s boats";
   go('battle');renderBattle();
+}
+function renderWeapons(){
+  $('#wbar').innerHTML=Object.entries(WPN).map(([k,w])=>{const left=k==='missile'?'∞':S.uses[k];
+    return `<button class="wp${S.wp===k?' on':''}" data-k="${k}" ${left===0?'disabled':''} title="${w.n}"><span>${w.i}</span><b>${left}</b><em>${w.n}</em></button>`}).join('');
+  $('#wbar').querySelectorAll('.wp').forEach(b=>b.onclick=()=>{S.wp=b.dataset.k;renderWeapons()});
+}
+function preview(r,c){
+  document.querySelectorAll('#eBoard .pvw').forEach(x=>x.classList.remove('pvw'));
+  if(!S.turn||S.over)return;const ch=$('#eBoard').children;
+  WPN[S.wp].p.forEach(([a,b])=>{if(inB(r+a,c+b))ch[(r+a)*N+c+b].classList.add('pvw')});
 }
 function renderBattle(){
   const m=$('#mBoard'),e=$('#eBoard');m.innerHTML=e.innerHTML='';
@@ -233,39 +274,56 @@ function renderBattle(){
     if(y.hit||y.miss)q.classList.add('shot');
     if(y.hit){q.classList.add('has');q.innerHTML=y.col?`<div class="b dead" style="--c:${y.col}"><i>💀</i></div>`:`<div class="b foe"><i class="f">🔥</i></div>`}
     else if(y.miss)q.classList.add('miss');
-    q.onclick=()=>fire(r,c);
+    const sc=S.scans.find(s=>Math.abs(s.r-r)<=1&&Math.abs(s.c-c)<=1);
+    if(sc){q.classList.add('scan');if(sc.r===r&&sc.c===c)q.insertAdjacentHTML('beforeend',`<span class="sn">${sc.n}</span>`)}
+    q.onclick=()=>fire(r,c);q.onmouseenter=()=>preview(r,c);
     e.appendChild(q);
   }
+  e.onmouseleave=()=>preview(-9,-9);
   const alive=S.ships.filter(s=>s.hits<s.z).length;
   $('#mLeft').textContent=alive+' afloat';$('#fLeft').textContent=(FLEET.length-S.foeSunk)+' afloat';
   $('#pnlMine').classList.toggle('active',!S.turn);$('#pnlFoe').classList.toggle('active',S.turn);
   e.classList.toggle('mine',S.turn&&!S.over);
   const b=$('#bar');b.className='bar'+(S.turn&&!S.over?' go':'');
-  b.innerHTML=(S.turn?'Your turn. Pick a square on the enemy board.':esc(S.foe)+' is aiming…')+(S.last?`<small>${S.last}</small>`:'');
+  b.innerHTML=(S.turn?'Your turn. Choose a weapon and pick a square.':esc(S.foe)+' is aiming…')+(S.last?`<small>${S.last}</small>`:'');
+  renderWeapons();
 }
 function fire(r,c){
-  if(!S.turn||S.over)return;const y=S.en[r][c];if(y.hit||y.miss)return;
-  S.turn=false;send({t:'fire',r,c});renderBattle();
+  if(!S.turn||S.over)return;
+  if(S.wp==='radar'){S.uses.radar--;S.turn=false;S.wp='missile';send({t:'radar',r,c});renderBattle();return}
+  const cells=WPN[S.wp].p.map(([a,b])=>[r+a,c+b]).filter(([a,b])=>inB(a,b)&&!S.en[a][b].hit&&!S.en[a][b].miss);
+  if(!cells.length){toast('Already fired there');return}
+  if(S.wp!=='missile')S.uses[S.wp]--;
+  S.turn=false;S.wp='missile';send({t:'fire',cells});renderBattle();
 }
-function onFire(r,c){
-  const x=S.my[r][c];if(x.hit||x.miss)return;
-  const hit=x.s>=0,sh=hit?S.ships[x.s]:null;
-  if(hit){x.hit=true;sh.hits++}else x.miss=true;
-  const sunk=hit&&sh.hits===sh.z?{cells:sh.cells,c:sh.c,n:sh.n}:null;
-  const lost=S.ships.every(s=>s.hits===s.z);
-  send({t:'res',r,c,hit,sunk,lost});
-  S.last=sunk?`${esc(S.foe)} sank your ${sunk.n}!`:hit?`${esc(S.foe)} hit your ship!`:`${esc(S.foe)} missed.`;
+function summary(who,res){
+  const h=res.filter(x=>x.hit).length,sk=res.filter(x=>x.sunk).map(x=>x.sunk.n);
+  return sk.length?`${who} sank ${sk.join(' and ')}!`:h?`${who}: ${h} hit${h>1?'s':''}!`:`${who}: all missed.`;
+}
+function onFire(cells){
+  const res=[];
+  for(const [r,c] of cells){
+    if(!inB(r,c))continue;const x=S.my[r][c];if(x.hit||x.miss)continue;
+    const hit=x.s>=0,sh=hit?S.ships[x.s]:null;if(hit){x.hit=true;sh.hits++}else x.miss=true;
+    res.push({r,c,hit,sunk:hit&&sh.hits===sh.z?{cells:sh.cells,c:sh.c,n:sh.n}:null});
+  }
+  const lost=S.ships.every(s=>s.hits===s.z);send({t:'res',res,lost});
+  S.last=summary(esc(S.foe)+' fired',res).replace(' fired: ',' landed ').replace(' fired sank',' sank your');
   if(lost){S.over=true;renderBattle();showModal('Defeat','All your ships are sunk. '+S.foe+' wins.',true)}
   else{S.turn=true;renderBattle()}
 }
 function onRes(d){
-  const y=S.en[d.r][d.c];
-  if(d.hit)y.hit=true;else y.miss=true;
-  if(d.sunk){S.foeSunk++;d.sunk.cells.forEach(([r,c])=>S.en[r][c].col=d.sunk.c)}
-  S.last=d.sunk?`You sank their ${d.sunk.n}!`:d.hit?'Direct hit!':'Splash. Missed.';
-  S.turn=false;
+  let sunk=0;
+  for(const x of d.res){const y=S.en[x.r][x.c];if(x.hit)y.hit=true;else y.miss=true;
+    if(x.sunk){sunk++;x.sunk.cells.forEach(([r,c])=>S.en[r][c].col=x.sunk.c)}}
+  S.foeSunk+=sunk;S.last=summary('You',d.res).replace('You sank','You sank their');S.turn=false;
   if(d.lost){S.over=true;renderBattle();showModal('Victory!','You sank the entire enemy fleet.',true)}else renderBattle();
 }
+function onRadar(d){
+  let n=0;B9.forEach(([a,b])=>{const r=d.r+a,c=d.c+b;if(inB(r,c)){const x=S.my[r][c];if(x.s>=0&&!x.hit)n++}});
+  send({t:'rad',r:d.r,c:d.c,n});S.last=esc(S.foe)+' used radar on your waters.';S.turn=true;renderBattle();
+}
+function onRad(d){S.scans.push({r:d.r,c:d.c,n:d.n});S.last=`Radar: ${d.n} hidden ship square${d.n===1?'':'s'} in that 3×3 area.`;S.turn=false;renderBattle()}
 function showModal(t,m,rematch){
   $('#mTitle').textContent=t;$('#mText').textContent=m;$('#btnRematch').hidden=!rematch;
   $('#btnRematch').disabled=false;$('#btnRematch').textContent='Play again';$('#modal').hidden=false;
